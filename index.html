@@ -658,7 +658,23 @@
         '</div>';
       renderAssignmentsList();
     } else if(state.tab==='assignments' && state.role==='student'){
-      pane.innerHTML = '<div id="assignment-list"></div>';
+      pane.innerHTML =
+        '<div class="block">'+
+          '<h2 class="section-title">과제 등록</h2>'+
+          '<form class="panel" onsubmit="return App.addMyAssignment(event)">'+
+            '<div class="field-row">'+
+              '<div class="field"><label for="myAssignTitle">곡명 / 과제명</label><input type="text" id="myAssignTitle" placeholder="예: 로망스 1절"></div>'+
+              '<div class="field"><label for="myAssignTarget">목표일 (선택)</label><input type="date" id="myAssignTarget"></div>'+
+            '</div>'+
+            '<div class="field"><label for="myAssignDesc">수업에서 배운 내용 / 메모 (선택)</label><textarea id="myAssignDesc" placeholder="예: 카포 3프렛, 아르페지오 위주로 연습"></textarea></div>'+
+            '<div class="form-error" id="myAssignFormError"></div>'+
+            '<div><button type="submit" class="btn btn-primary">과제 추가</button></div>'+
+          '</form>'+
+        '</div>'+
+        '<div class="block">'+
+          '<h2 class="section-title">내 과제 <span class="count mono" id="assignmentCount"></span></h2>'+
+          '<div id="assignment-list"></div>'+
+        '</div>';
       renderAssignmentsList();
     }
   }
@@ -1001,7 +1017,7 @@
     var keepPos = keepId ? act.selectionStart : null;
     var mine = state.role==='student' ? state.assignments.filter(function(a){ return a.studentId===state.studentId; }) : state.assignments;
     var countEl = el('assignmentCount'); if(countEl) countEl.textContent = mine.length ? mine.length+'건' : '';
-    if(!mine.length){ listEl.innerHTML = '<div class="empty">'+(state.role==='student' ? '아직 배정된 과제가 없어요.' : '아직 등록된 과제가 없어요.')+'</div>'; return; }
+    if(!mine.length){ listEl.innerHTML = '<div class="empty">'+(state.role==='student' ? '아직 등록한 과제가 없어요. 위에서 추가해보세요.' : '아직 등록된 과제가 없어요.')+'</div>'; return; }
     var statusLabel = {assigned:'배정됨', in_progress:'연습중', done:'완료'};
     listEl.innerHTML = mine.map(function(a){
       var logsHtml = a.logs && a.logs.length
@@ -1050,16 +1066,22 @@
         '</form>'
       ) : '';
 
+      var byStudent = a.createdBy === 'student';
+      var originLabel = byStudent ? '학생 등록' : '선생님 배정';
+      var canDelete = (state.role==='teacher') || (state.role==='student' && byStudent);
+      var deleteBtn = canDelete ? confirmControl('assign:'+a.id, "App.removeAssignment('"+a.id+"')", '삭제') : '';
+
       return '<div class="card">'+
         '<div class="row space-between">'+
-          '<div><div class="assign-title">'+esc(a.title)+'</div>'+(state.role==='teacher' ? '<div class="text-soft small">'+esc(a.studentName||'')+'</div>' : '')+'</div>'+
+          '<div><div class="assign-title">'+esc(a.title)+'</div>'+
+            '<div class="text-soft small">'+(state.role==='teacher' ? esc(a.studentName||'')+' · ' : '')+originLabel+'</div></div>'+
           '<span class="badge badge-'+a.status+'">'+(statusLabel[a.status]||a.status)+'</span>'+
         '</div>'+
         (a.description ? '<p class="assign-desc">'+esc(a.description)+'</p>' : '')+
         (a.targetDate ? '<div class="text-soft small">목표일 '+formatDateLabel(a.targetDate)+'</div>' : '')+
         checklistHtml+
         '<div class="logs">'+logsHtml+'</div>'+
-        '<div class="assign-actions">'+logForm+'<div class="row gap-8">'+statusButtons+'</div></div>'+
+        '<div class="assign-actions">'+logForm+'<div class="row gap-8">'+statusButtons+deleteBtn+'</div></div>'+
       '</div>';
     }).join('');
 
@@ -1345,6 +1367,29 @@
     },
     setAssignmentStatus: function(id, status){
       state.db.collection('assignments').doc(id).update({status:status});
+    },
+    addMyAssignment: function(e){
+      e.preventDefault();
+      var title = el('myAssignTitle').value.trim();
+      var desc = el('myAssignDesc').value.trim();
+      var target = el('myAssignTarget').value;
+      var err = el('myAssignFormError');
+      if(!title){ err.textContent = '곡명 또는 과제명을 입력해주세요.'; return false; }
+      if(!state.studentId){ err.textContent = '학생 정보를 찾을 수 없어요. 다시 입장해주세요.'; return false; }
+      err.textContent = '';
+      state.db.collection('assignments').add({
+        studentId:state.studentId, studentName:state.studentName||'',
+        title:title, description:desc, targetDate:target||null,
+        status:'assigned', logs:[], checklist:[],
+        createdBy:'student', createdAt:new Date().toISOString()
+      }).then(function(){
+        el('myAssignTitle').value=''; el('myAssignDesc').value=''; el('myAssignTarget').value='';
+      }).catch(function(){ err.textContent = '저장에 실패했어요. 다시 시도해주세요.'; });
+      return false;
+    },
+    removeAssignment: function(id){
+      App.cancelConfirm('assign:'+id);
+      state.db.collection('assignments').doc(id).delete();
     },
     addCheckItem: function(e, id){
       e.preventDefault();
