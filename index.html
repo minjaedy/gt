@@ -670,26 +670,29 @@
     html += '<div class="field" style="flex:1;"><label for="lookupInput">🔎 학생 찾기</label>'+
       '<input type="text" id="lookupInput" placeholder="이름 입력 (예: 이서연)" value="'+esc(q)+'" '+
       'oninput="App.onLookupInput()" autocomplete="off"></div>';
-    if(q) html += '<button class="btn btn-ghost btn-sm" onclick="App.clearLookup()">지우기</button>';
+    html += '<button class="btn btn-ghost btn-sm" id="lookupClearBtn" onclick="App.clearLookup()" style="'+(q?'':'display:none;')+'">지우기</button>';
     html += '</div>';
+    html += '<div id="lookupResults">'+buildLookupResultsHtml()+'</div>';
+    html += '</div>';
+    return html;
+  }
 
+  function buildLookupResultsHtml(){
+    var q = (state.lookupQuery||'').trim();
     if(!q){
       var booked = state.lessons.filter(function(l){ return l.status==='booked' && l.date>=todayStr(); });
-      html += '<div class="text-soft small" style="margin-top:6px;">이름을 입력하면 그 학생의 예약이 모두 보여요. (현재 예정된 예약 '+booked.length+'건)</div>';
-      html += '</div>';
-      return html;
+      return '<div class="text-soft small" style="margin-top:6px;">이름을 입력하면 그 학생의 예약이 모두 보여요. (현재 예정된 예약 '+booked.length+'건)</div>';
     }
 
     var matched = state.students.filter(function(s){
       return (s.name||'').toLowerCase().indexOf(q.toLowerCase()) !== -1;
     });
     if(!matched.length){
-      html += '<div class="empty small" style="margin-top:8px;">"'+esc(q)+'" 와(과) 일치하는 학생이 없어요.</div></div>';
-      return html;
+      return '<div class="empty small" style="margin-top:8px;">"'+esc(q)+'" 와(과) 일치하는 학생이 없어요.</div>';
     }
 
     var today = todayStr();
-    html += '<div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">';
+    var html = '<div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">';
     matched.forEach(function(s){
       var mine = state.lessons.filter(function(l){ return l.studentId===s.id; });
       var upcoming = mine.filter(function(l){ return l.status==='booked' && l.date>=today; })
@@ -721,12 +724,19 @@
         (upcoming.length ? '가장 가까운 예약 주로 이동' : '이번 주로')+'</button></div>';
       html += '</div>';
     });
-    html += '</div></div>';
+    html += '</div>';
     return html;
   }
 
   function renderLessonsList(){
     var listEl = el('lesson-list'); if(!listEl) return;
+    // 검색창에 입력 중이면 입력창을 다시 그리지 않고 결과만 갱신 (한글 조합 깨짐 방지)
+    var lookupEl = el('lookupInput');
+    if(lookupEl && document.activeElement === lookupEl){
+      var results = el('lookupResults');
+      if(results) results.innerHTML = buildLookupResultsHtml();
+      return;
+    }
     if(state.role==='teacher'){
       listEl.innerHTML = buildLookupHtml() + buildChangeRequestsHtml() + buildScheduleGridHtml('teacher');
       return;
@@ -984,6 +994,11 @@
 
   function renderAssignmentsList(){
     var listEl = el('assignment-list'); if(!listEl) return;
+    // 입력 중인 칸이 있으면 값/포커스를 보존했다가 되돌려줌 (한글 조합 깨짐 방지)
+    var act = document.activeElement;
+    var keepId = (act && act.id && listEl.contains(act)) ? act.id : null;
+    var keepVal = keepId ? act.value : null;
+    var keepPos = keepId ? act.selectionStart : null;
     var mine = state.role==='student' ? state.assignments.filter(function(a){ return a.studentId===state.studentId; }) : state.assignments;
     var countEl = el('assignmentCount'); if(countEl) countEl.textContent = mine.length ? mine.length+'건' : '';
     if(!mine.length){ listEl.innerHTML = '<div class="empty">'+(state.role==='student' ? '아직 배정된 과제가 없어요.' : '아직 등록된 과제가 없어요.')+'</div>'; return; }
@@ -994,6 +1009,33 @@
             return '<div class="log-row"><span class="mono text-soft">'+esc(log.date)+'</span><span class="mono">'+Number(log.minutes||0)+'분</span><span>'+esc(log.note||'')+'</span></div>';
           }).join('')
         : '<div class="empty small">아직 연습 기록이 없어요</div>';
+
+      var checklist = Array.isArray(a.checklist) ? a.checklist : [];
+      var doneCnt = checklist.filter(function(c){ return c.done; }).length;
+      var checklistHtml = '';
+      if(checklist.length){
+        checklistHtml += '<div class="text-soft small" style="margin-top:10px;">체크리스트 '+doneCnt+'/'+checklist.length+'</div>';
+        checklistHtml += '<div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">';
+        checklist.forEach(function(c, idx){
+          checklistHtml += '<div class="row gap-8" style="justify-content:space-between; flex-wrap:nowrap;">'+
+            '<label class="row gap-8" style="flex:1; cursor:'+(state.role==='student'?'pointer':'default')+'; flex-wrap:nowrap;">'+
+              '<input type="checkbox" '+(c.done?'checked':'')+' '+(state.role==='student'?'':'disabled')+
+                ' onchange="App.toggleCheckItem(\''+a.id+'\','+idx+')" style="width:17px; height:17px; flex-shrink:0;">'+
+              '<span style="'+(c.done?'text-decoration:line-through; opacity:.55;':'')+'">'+esc(c.text)+'</span>'+
+            '</label>'+
+            (state.role==='student'
+              ? '<button class="btn btn-ghost btn-sm" onclick="App.removeCheckItem(\''+a.id+'\','+idx+')" aria-label="삭제">✕</button>'
+              : '')+
+          '</div>';
+        });
+        checklistHtml += '</div>';
+      }
+      if(state.role==='student'){
+        checklistHtml += '<form class="log-form" style="margin-top:6px;" onsubmit="return App.addCheckItem(event,\''+a.id+'\')">'+
+          '<input type="text" class="input-grow" id="checkText-'+a.id+'" placeholder="할 일 추가 (예: 1~8마디 천천히 10번)">'+
+          '<button type="submit" class="btn btn-ghost btn-sm">추가</button>'+
+        '</form>';
+      }
 
       var statusButtons = '';
       if(a.status!=='in_progress') statusButtons += '<button class="btn btn-ghost btn-sm" onclick="App.setAssignmentStatus(\''+a.id+'\',\'in_progress\')">연습중으로 표시</button>';
@@ -1015,10 +1057,20 @@
         '</div>'+
         (a.description ? '<p class="assign-desc">'+esc(a.description)+'</p>' : '')+
         (a.targetDate ? '<div class="text-soft small">목표일 '+formatDateLabel(a.targetDate)+'</div>' : '')+
+        checklistHtml+
         '<div class="logs">'+logsHtml+'</div>'+
         '<div class="assign-actions">'+logForm+'<div class="row gap-8">'+statusButtons+'</div></div>'+
       '</div>';
     }).join('');
+
+    if(keepId){
+      var back = el(keepId);
+      if(back){
+        back.value = keepVal;
+        back.focus();
+        try{ back.setSelectionRange(keepPos, keepPos); }catch(e){}
+      }
+    }
   }
 
   // ---------- actions ----------
@@ -1092,15 +1144,19 @@
     onLookupInput: function(){
       var input = el('lookupInput'); if(!input) return;
       state.lookupQuery = input.value;
-      var pos = input.selectionStart;
-      renderLessonsList();
-      var again = el('lookupInput');
-      if(again){ again.focus(); try{ again.setSelectionRange(pos,pos); }catch(e){} }
+      var results = el('lookupResults');
+      if(results) results.innerHTML = buildLookupResultsHtml();
+      var clearBtn = el('lookupClearBtn');
+      if(clearBtn) clearBtn.style.display = state.lookupQuery.trim() ? '' : 'none';
     },
     clearLookup: function(){
       state.lookupQuery = '';
-      renderLessonsList();
-      var again = el('lookupInput'); if(again) again.focus();
+      var input = el('lookupInput');
+      if(input){ input.value = ''; input.focus(); }
+      var results = el('lookupResults');
+      if(results) results.innerHTML = buildLookupResultsHtml();
+      var clearBtn = el('lookupClearBtn');
+      if(clearBtn) clearBtn.style.display = 'none';
     },
     jumpToStudentNext: function(studentId){
       var today = todayStr();
@@ -1109,6 +1165,8 @@
       }).sort(function(a,b){ return (a.date+a.startTime) < (b.date+b.startTime) ? -1 : 1; });
       state.weekStart = mondayOf(upcoming.length ? upcoming[0].date : today);
       state.activeCell = null;
+      var lookupEl = el('lookupInput');
+      if(lookupEl) lookupEl.blur();
       renderLessonsList();
     },
     onStudentSelectChange: function(){
@@ -1279,7 +1337,7 @@
       err.textContent = '';
       state.db.collection('assignments').add({
         studentId:studentId, studentName: s?s.name:'', title:title, description:desc,
-        targetDate:target||null, status:'assigned', logs:[], createdAt:new Date().toISOString()
+        targetDate:target||null, status:'assigned', logs:[], checklist:[], createdAt:new Date().toISOString()
       }).then(function(){
         el('assignTitle').value=''; el('assignDesc').value=''; el('assignTarget').value='';
       }).catch(function(){ err.textContent = '저장에 실패했어요. 다시 시도해주세요.'; });
@@ -1287,6 +1345,32 @@
     },
     setAssignmentStatus: function(id, status){
       state.db.collection('assignments').doc(id).update({status:status});
+    },
+    addCheckItem: function(e, id){
+      e.preventDefault();
+      var input = el('checkText-'+id); if(!input) return false;
+      var text = input.value.trim();
+      if(!text) return false;
+      var a = state.assignments.find(function(x){ return x.id===id; });
+      if(!a) return false;
+      var list = (Array.isArray(a.checklist) ? a.checklist : []).concat([{text:text, done:false}]);
+      input.value = '';
+      state.db.collection('assignments').doc(id).update({checklist:list});
+      return false;
+    },
+    toggleCheckItem: function(id, idx){
+      var a = state.assignments.find(function(x){ return x.id===id; });
+      if(!a || !Array.isArray(a.checklist) || !a.checklist[idx]) return;
+      var list = a.checklist.map(function(c,i){
+        return i===idx ? {text:c.text, done:!c.done} : {text:c.text, done:!!c.done};
+      });
+      state.db.collection('assignments').doc(id).update({checklist:list});
+    },
+    removeCheckItem: function(id, idx){
+      var a = state.assignments.find(function(x){ return x.id===id; });
+      if(!a || !Array.isArray(a.checklist)) return;
+      var list = a.checklist.filter(function(c,i){ return i!==idx; });
+      state.db.collection('assignments').doc(id).update({checklist:list});
     },
     addLog: function(e, id){
       e.preventDefault();
