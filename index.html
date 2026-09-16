@@ -88,6 +88,52 @@
 
   .container{max-width:720px; margin-inline:auto; padding-inline:20px; padding-block:20px 56px;}
 
+  /* ---------- 모바일 대응 ---------- */
+  html{ -webkit-text-size-adjust:100%; }
+  body{ overflow-x:hidden; }
+  img, table{ max-width:100%; }
+
+  /* iOS 노치/홈바 안전영역 */
+  .top-inner{
+    padding-left:max(20px, env(safe-area-inset-left));
+    padding-right:max(20px, env(safe-area-inset-right));
+  }
+  .container{
+    padding-left:max(20px, env(safe-area-inset-left));
+    padding-right:max(20px, env(safe-area-inset-right));
+    padding-bottom:calc(56px + env(safe-area-inset-bottom));
+  }
+
+  @media (max-width:640px){
+    .top-inner{ padding-block:11px; gap:8px; }
+    .brand h1{ font-size:1.12rem; }
+    .whoami{ font-size:.8rem; gap:7px; }
+    .container{ padding-block:16px 48px; }
+    .tabbar{ margin-bottom:15px; }
+    .tab{ padding:10px 12px; font-size:.9rem; }
+
+    /* 폰에서는 입력 칸들을 한 줄에 하나씩 */
+    .field-row{ flex-direction:column; gap:9px; }
+    .field{ min-width:0; width:100%; }
+
+    /* 터치 영역 확보 + iOS 자동 확대 방지(16px) */
+    input, select, textarea{ font-size:16px; }
+    .btn{ min-height:42px; }
+
+    .landing-wrap{ padding:26px 16px; gap:16px; }
+    .landing-cards{ flex-direction:column; }
+    .landing-card{ min-width:0; width:100%; }
+
+    .lesson-row{ gap:10px; }
+    .lesson-when{ min-width:0; }
+    .lesson-mid{ min-width:0; }
+  }
+
+  @media (max-width:380px){
+    .brand h1{ font-size:1rem; }
+    .tab{ padding:9px 10px; font-size:.86rem; }
+  }
+
   .tabbar{display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px; overflow-x:auto;}
   .tab{
     background:none; border:none; border-bottom:3px solid transparent; cursor:pointer;
@@ -234,12 +280,12 @@
   // TODO: Firebase 콘솔 > 프로젝트 설정 > 일반 > 내 앱 > SDK 설정 및 구성 에서 복사해서 채워넣으세요.
   // Firestore 사용 설정(Firestore Database 만들기)도 콘솔에서 먼저 해야 합니다.
   var FIREBASE_CONFIG = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyAV06iYIEawbuWft8EIBs6G__HKhSwZhSM",
+    authDomain: "gtasd-ecc9e.firebaseapp.com",
+    projectId: "gtasd-ecc9e",
+    storageBucket: "gtasd-ecc9e.firebasestorage.app",
+    messagingSenderId: "68913009518",
+    appId: "1:68913009518:web:23f3b2dc708b94aacd277f"
   };
 
   var state = {
