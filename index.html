@@ -290,7 +290,7 @@
 
   var state = {
     db:null, dbReady:false, dbError:false,
-    role:null, studentId:null, studentName:null, teacherName:'', signupOpen:false,
+    role:null, studentId:null, studentName:null, teacherName:'', signupOpen:false, lookupQuery:'',
     tab:null,
     students:[], lessons:[], assignments:[], changeRequests:[],
     confirming:new Set(), confirmTimers:new Map(),
@@ -663,10 +663,72 @@
     }
   }
 
+  function buildLookupHtml(){
+    var q = (state.lookupQuery||'').trim();
+    var html = '<div class="panel" style="margin-bottom:16px;">';
+    html += '<div class="row gap-8" style="align-items:flex-end;">';
+    html += '<div class="field" style="flex:1;"><label for="lookupInput">🔎 학생 찾기</label>'+
+      '<input type="text" id="lookupInput" placeholder="이름 입력 (예: 이서연)" value="'+esc(q)+'" '+
+      'oninput="App.onLookupInput()" autocomplete="off"></div>';
+    if(q) html += '<button class="btn btn-ghost btn-sm" onclick="App.clearLookup()">지우기</button>';
+    html += '</div>';
+
+    if(!q){
+      var booked = state.lessons.filter(function(l){ return l.status==='booked' && l.date>=todayStr(); });
+      html += '<div class="text-soft small" style="margin-top:6px;">이름을 입력하면 그 학생의 예약이 모두 보여요. (현재 예정된 예약 '+booked.length+'건)</div>';
+      html += '</div>';
+      return html;
+    }
+
+    var matched = state.students.filter(function(s){
+      return (s.name||'').toLowerCase().indexOf(q.toLowerCase()) !== -1;
+    });
+    if(!matched.length){
+      html += '<div class="empty small" style="margin-top:8px;">"'+esc(q)+'" 와(과) 일치하는 학생이 없어요.</div></div>';
+      return html;
+    }
+
+    var today = todayStr();
+    html += '<div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">';
+    matched.forEach(function(s){
+      var mine = state.lessons.filter(function(l){ return l.studentId===s.id; });
+      var upcoming = mine.filter(function(l){ return l.status==='booked' && l.date>=today; })
+        .sort(function(a,b){ return (a.date+a.startTime) < (b.date+b.startTime) ? -1 : 1; });
+      var doneCount = mine.filter(function(l){ return l.status==='completed'; }).length;
+      var openAssign = state.assignments.filter(function(a){ return a.studentId===s.id && a.status!=='done'; }).length;
+      var age = currentAgeOf(s);
+
+      html += '<div class="card">';
+      html += '<div style="font-weight:600;">'+esc(s.name)+(age==null?'':' <span class="text-soft small">'+age+'세</span>')+'</div>';
+      html += '<div class="text-soft small">예정 '+upcoming.length+'건 · 완료 '+doneCount+'건 · 진행중 과제 '+openAssign+'건</div>';
+      if(!upcoming.length){
+        html += '<div class="empty small" style="margin-top:6px;">예정된 예약이 없어요.</div>';
+      } else {
+        html += '<div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">';
+        upcoming.forEach(function(l){
+          var d = shortDayLabel(l.date);
+          var isToday = l.date===today;
+          html += '<div class="row gap-8" style="justify-content:space-between;">'+
+            '<span class="mono">'+esc(d.md)+'('+esc(d.dow)+') '+esc(l.startTime)+'</span>'+
+            '<span class="text-soft small">'+(isToday?'오늘':formatDateLabel(l.date))+
+            (l.duration?' · '+Number(l.duration)+'분':'')+'</span>'+
+          '</div>';
+        });
+        html += '</div>';
+      }
+      html += '<div class="row gap-8" style="margin-top:8px;">'+
+        '<button class="btn btn-ghost btn-sm" onclick="App.jumpToStudentNext(\''+s.id+'\')">'+
+        (upcoming.length ? '가장 가까운 예약 주로 이동' : '이번 주로')+'</button></div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
   function renderLessonsList(){
     var listEl = el('lesson-list'); if(!listEl) return;
     if(state.role==='teacher'){
-      listEl.innerHTML = buildChangeRequestsHtml() + buildScheduleGridHtml('teacher');
+      listEl.innerHTML = buildLookupHtml() + buildChangeRequestsHtml() + buildScheduleGridHtml('teacher');
       return;
     }
     listEl.innerHTML = buildScheduleGridHtml('student') + buildStudentRecapHtml();
@@ -1026,6 +1088,28 @@
         state.role = 'student'; state.tab='schedule';
         saveSession(); renderRoot();
       }).catch(function(){ err.textContent = '등록에 실패했어요. 다시 시도해주세요.'; });
+    },
+    onLookupInput: function(){
+      var input = el('lookupInput'); if(!input) return;
+      state.lookupQuery = input.value;
+      var pos = input.selectionStart;
+      renderLessonsList();
+      var again = el('lookupInput');
+      if(again){ again.focus(); try{ again.setSelectionRange(pos,pos); }catch(e){} }
+    },
+    clearLookup: function(){
+      state.lookupQuery = '';
+      renderLessonsList();
+      var again = el('lookupInput'); if(again) again.focus();
+    },
+    jumpToStudentNext: function(studentId){
+      var today = todayStr();
+      var upcoming = state.lessons.filter(function(l){
+        return l.studentId===studentId && l.status==='booked' && l.date>=today;
+      }).sort(function(a,b){ return (a.date+a.startTime) < (b.date+b.startTime) ? -1 : 1; });
+      state.weekStart = mondayOf(upcoming.length ? upcoming[0].date : today);
+      state.activeCell = null;
+      renderLessonsList();
     },
     onStudentSelectChange: function(){
       var sel = el('studentSelect');
