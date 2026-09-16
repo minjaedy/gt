@@ -291,9 +291,11 @@
     appId: "1:68913009518:web:23f3b2dc708b94aacd277f"
   };
 
+  var TEACHER_NAME = '정성호';
+
   var state = {
     db:null, dbReady:false, dbError:false,
-    role:null, studentId:null, studentName:null, teacherName:'', signupOpen:false, lookupQuery:'',
+    role:null, studentId:null, studentName:null, teacherName:TEACHER_NAME, signupOpen:false, lookupQuery:'',
     tab:null,
     students:[], lessons:[], assignments:[], changeRequests:[],
     confirming:new Set(), confirmTimers:new Map(),
@@ -354,7 +356,7 @@
       if(!raw) return;
       var s = JSON.parse(raw);
       state.role = s.role||null; state.studentId = s.studentId||null;
-      state.studentName = s.studentName||null; state.teacherName = s.teacherName||'';
+      state.studentName = s.studentName||null; state.teacherName = TEACHER_NAME;
     }catch(e){}
   }
   function saveSession(){
@@ -500,8 +502,6 @@
     if(!state.settings.pin){
       return '<h2>선생님 PIN 만들기</h2>'+
         '<p class="text-soft small">처음 접속하시는군요. 선생님만 아는 숫자 PIN을 만들어주세요.</p>'+
-        '<div class="field"><label for="teacherNameInput">이름 (선택)</label>'+
-        '<input type="text" id="teacherNameInput" placeholder="예: 김민재" value="'+esc(state.teacherName)+'"></div>'+
         '<div class="field"><label for="newPinInput">새 PIN (숫자 4자리 이상)</label>'+
         '<input type="password" inputmode="numeric" id="newPinInput" placeholder="••••"></div>'+
         '<div class="field"><label for="newPinConfirm">PIN 확인</label>'+
@@ -510,8 +510,6 @@
         '<button class="btn btn-primary" onclick="App.setupTeacherPin()">PIN 설정하고 입장</button>';
     }
     return '<h2>선생님</h2>'+
-      '<div class="field"><label for="teacherNameInput">이름 (선택)</label>'+
-      '<input type="text" id="teacherNameInput" placeholder="예: 김민재" value="'+esc(state.teacherName)+'"></div>'+
       '<div class="field"><label for="teacherPinInput">PIN</label>'+
       '<input type="password" inputmode="numeric" id="teacherPinInput" placeholder="••••"></div>'+
       '<div class="form-error" id="teacherFormError"></div>'+
@@ -578,7 +576,7 @@
     if(!state.tab) state.tab = 'schedule';
     var tabs = tabsFor(state.role);
     var whoLabel = state.role==='teacher'
-      ? (state.teacherName ? esc(state.teacherName)+' 선생님' : '선생님')
+      ? esc(TEACHER_NAME)+' 선생님'
       : esc(state.studentName)+' 학생';
 
     var html = '';
@@ -1101,7 +1099,6 @@
   // ---------- actions ----------
   var App = {
     setupTeacherPin: function(){
-      var name = (el('teacherNameInput').value||'').trim();
       var pin = el('newPinInput').value.trim();
       var confirmPin = el('newPinConfirm').value.trim();
       var err = el('teacherFormError');
@@ -1109,17 +1106,16 @@
       if(pin!==confirmPin){ err.textContent = 'PIN이 서로 일치하지 않아요.'; return; }
       err.textContent = '';
       state.db.doc('settings/teacher').set({pin:pin}).then(function(){
-        state.teacherName = name; state.role = 'teacher'; state.tab='schedule';
+        state.teacherName = TEACHER_NAME; state.role = 'teacher'; state.tab='schedule';
         saveSession(); renderRoot();
       }).catch(function(){ err.textContent = '설정에 실패했어요. 다시 시도해주세요.'; });
     },
     enterTeacher: function(){
-      var name = (el('teacherNameInput').value||'').trim();
       var entered = el('teacherPinInput').value.trim();
       var err = el('teacherFormError');
       if(entered !== (state.settings.pin||'')){ err.textContent = 'PIN이 올바르지 않아요.'; return; }
       err.textContent = '';
-      state.teacherName = name; state.role = 'teacher'; state.tab='schedule';
+      state.teacherName = TEACHER_NAME; state.role = 'teacher'; state.tab='schedule';
       saveSession(); renderRoot();
     },
     togglePinChange: function(){ state.pinChangeOpen = !state.pinChangeOpen; renderApp(); },
