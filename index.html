@@ -397,6 +397,22 @@
     }
   }
 
+  function lessonEndTime(l){
+    var start = new Date(l.date+'T'+(l.startTime||'00:00')+':00');
+    return new Date(start.getTime() + (Number(l.durationMin)||60)*60000);
+  }
+  function autoCompletePastLessons(){
+    if(!state.db) return;
+    var now = new Date();
+    state.lessons.forEach(function(l){
+      if(l.status !== 'booked') return;
+      if(now < lessonEndTime(l)) return;
+      // 로컬에서 먼저 반영해 화면이 즉시 갱신되도록
+      l.status = 'completed';
+      state.db.collection('lessons').doc(l.id).update({status:'completed'}).catch(function(){});
+    });
+  }
+
   function subscribeAll(){
     state.db.collection('students').orderBy('name').onSnapshot(function(snap){
       state.students = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
@@ -406,6 +422,7 @@
     state.db.collection('lessons').orderBy('date').onSnapshot(function(snap){
       state.lessons = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
         .sort(function(a,b){ return (a.date+a.startTime).localeCompare(b.date+b.startTime); });
+      autoCompletePastLessons();
       onLessonsChanged();
     }, function(){});
 
@@ -1471,6 +1488,15 @@
   loadSession();
   loadGridPrefs();
   initDb();
+
+  // 앱을 켜 둔 상태에서 레슨이 끝나도 반영되도록 주기적으로 확인
+  setInterval(function(){
+    if(!state.db || !state.lessons.length) return;
+    var before = state.lessons.filter(function(l){ return l.status==='booked'; }).length;
+    autoCompletePastLessons();
+    var after = state.lessons.filter(function(l){ return l.status==='booked'; }).length;
+    if(before !== after) onLessonsChanged();
+  }, 60000);
 })();
 </script>
 
