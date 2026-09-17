@@ -296,7 +296,7 @@
 
   var state = {
     db:null, dbReady:false, dbError:false,
-    role:null, studentId:null, studentName:null, teacherName:TEACHER_NAME, signupOpen:false, lookupQuery:'',
+    role:null, studentId:null, studentName:null, teacherName:TEACHER_NAME, signupOpen:false, lookupQuery:'', assignFilter:'',
     tab:null,
     students:[], lessons:[], assignments:[], changeRequests:[],
     confirming:new Set(), confirmTimers:new Map(),
@@ -674,7 +674,14 @@
           '</form>'+
         '</div>'+
         '<div class="block">'+
-          '<h2 class="section-title">전체 과제 <span class="count mono" id="assignmentCount"></span></h2>'+
+          '<h2 class="section-title">학생별 과제 <span class="count mono" id="assignmentCount"></span></h2>'+
+          '<div class="panel" style="margin-bottom:14px;">'+
+            '<div class="row gap-8" style="align-items:flex-end;">'+
+              '<div class="field" style="flex:1; margin-bottom:0;"><label for="assignFilterInput">학생 이름</label>'+
+                '<input type="text" id="assignFilterInput" placeholder="이름을 입력하세요" value="'+esc(state.assignFilter||'')+'" oninput="App.onAssignFilterInput()" autocomplete="off"></div>'+
+              '<button class="btn btn-ghost btn-sm" id="assignFilterClear" onclick="App.clearAssignFilter()" style="'+((state.assignFilter||'').trim()?'':'display:none;')+'">지우기</button>'+
+            '</div>'+
+          '</div>'+
           '<div id="assignment-list"></div>'+
         '</div>';
       renderAssignmentsList();
@@ -1065,9 +1072,27 @@
     var keepId = (act && act.id && listEl.contains(act)) ? act.id : null;
     var keepVal = keepId ? act.value : null;
     var keepPos = keepId ? act.selectionStart : null;
-    var mine = state.role==='student' ? state.assignments.filter(function(a){ return a.studentId===state.studentId; }) : state.assignments;
+    var mine;
+    if(state.role==='student'){
+      mine = state.assignments.filter(function(a){ return a.studentId===state.studentId; });
+    } else {
+      var q = (state.assignFilter||'').trim().toLowerCase();
+      if(!q){
+        var countEl0 = el('assignmentCount'); if(countEl0) countEl0.textContent = '';
+        listEl.innerHTML = '<div class="empty">학생 이름을 입력하면 그 학생의 과제만 보여요.</div>';
+        return;
+      }
+      mine = state.assignments.filter(function(a){
+        return (a.studentName||'').toLowerCase().indexOf(q) !== -1;
+      });
+    }
     var countEl = el('assignmentCount'); if(countEl) countEl.textContent = mine.length ? mine.length+'건' : '';
-    if(!mine.length){ listEl.innerHTML = '<div class="empty">'+(state.role==='student' ? '아직 등록한 과제가 없어요. 위에서 추가해보세요.' : '아직 등록된 과제가 없어요.')+'</div>'; return; }
+    if(!mine.length){
+      listEl.innerHTML = '<div class="empty">'+(state.role==='student'
+        ? '아직 등록한 과제가 없어요. 위에서 추가해보세요.'
+        : '"'+esc((state.assignFilter||'').trim())+'" 학생의 과제가 없어요.')+'</div>';
+      return;
+    }
     var statusLabel = {assigned:'배정됨', in_progress:'연습중', done:'완료'};
     listEl.innerHTML = mine.map(function(a){
       var logsHtml = a.logs && a.logs.length
@@ -1304,6 +1329,21 @@
       else{ state.db.collection('lessons').add(Object.assign({date:date, startTime:time, note:'', createdAt:new Date().toISOString()}, fields)); }
       state.activeCell = null;
       renderLessonsList();
+    },
+    onAssignFilterInput: function(){
+      var input = el('assignFilterInput'); if(!input) return;
+      state.assignFilter = input.value;
+      renderAssignmentsList();
+      var btn = el('assignFilterClear');
+      if(btn) btn.style.display = state.assignFilter.trim() ? '' : 'none';
+    },
+    clearAssignFilter: function(){
+      state.assignFilter = '';
+      var input = el('assignFilterInput');
+      if(input){ input.value = ''; input.focus(); }
+      renderAssignmentsList();
+      var btn = el('assignFilterClear');
+      if(btn) btn.style.display = 'none';
     },
     completeCellDoc: function(date,time){
       var existing = state.lessons.find(function(l){ return l.date===date && l.startTime===time; });
