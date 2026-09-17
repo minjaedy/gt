@@ -427,20 +427,28 @@
     }, function(){});
   }
 
+  var REMEMBER_KEY = 'fretnote_lastStudentName';
+  function rememberedName(){
+    try{ return localStorage.getItem(REMEMBER_KEY) || ''; }catch(e){ return ''; }
+  }
+  function rememberName(name){
+    try{ localStorage.setItem(REMEMBER_KEY, name); }catch(e){}
+  }
+  function forgetName(){
+    try{ localStorage.removeItem(REMEMBER_KEY); }catch(e){}
+  }
   function studentOptionsHtml(){
     if(!state.students.length) return '<option value="">등록된 학생이 없어요</option>';
     var opts = '<option value="">이름을 선택하세요</option>';
     state.students.forEach(function(s){ opts += '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'; });
     return opts;
   }
-  function updateLandingStudentSelect(){
-    var sel = el('studentSelect'); if(!sel) return;
-    var prev = sel.value;
-    sel.innerHTML = studentOptionsHtml();
-    var has = Array.prototype.some.call(sel.options, function(o){ return o.value===prev; });
-    if(has) sel.value = prev;
-    var area = el('studentPinArea');
-    if(area) area.innerHTML = studentPinAreaHtml(sel.value);
+  function findStudentByName(name){
+    var key = (name||'').trim().toLowerCase();
+    if(!key) return null;
+    return state.students.find(function(s){
+      return (s.name||'').trim().toLowerCase() === key;
+    }) || null;
   }
   function updateAssignSelect(){
     var sel = el('assignStudentSelect'); if(!sel) return;
@@ -451,7 +459,7 @@
   }
 
   function onStudentsChanged(){
-    if(!state.role){ updateLandingStudentSelect(); return; }
+    if(!state.role){ return; }
     updateAssignSelect();
     if(el('student-list')) renderStudentsList();
   }
@@ -516,20 +524,6 @@
       '<button class="btn btn-primary" onclick="App.enterTeacher()">선생님으로 입장</button>';
   }
 
-  function studentPinAreaHtml(studentId){
-    if(!studentId) return '';
-    var s = state.students.find(function(x){ return x.id===studentId; });
-    if(!s) return '';
-    if(!s.pin){
-      return '<p class="text-soft small">처음 입장하시는군요. 나만 아는 PIN을 만들어주세요.</p>'+
-        '<div class="field"><label for="newStudentPinInput">새 PIN (숫자 4자리 이상)</label>'+
-        '<input type="password" inputmode="numeric" id="newStudentPinInput" placeholder="••••"></div>'+
-        '<div class="field"><label for="newStudentPinConfirm">PIN 확인</label>'+
-        '<input type="password" inputmode="numeric" id="newStudentPinConfirm" placeholder="••••"></div>';
-    }
-    return '<div class="field"><label for="studentPinInput">PIN</label>'+
-      '<input type="password" inputmode="numeric" id="studentPinInput" placeholder="••••"></div>';
-  }
 
   function studentCardHtml(){
     if(state.signupOpen){
@@ -546,10 +540,18 @@
         '<button class="btn btn-primary" onclick="App.signupStudent()">등록하고 입장</button>'+
         '<button class="btn" style="margin-top:8px;" onclick="App.toggleSignup()">돌아가기</button>';
     }
+    var saved = rememberedName();
     return '<h2>학생</h2>'+
-      '<div class="field"><label for="studentSelect">내 이름</label>'+
-      '<select id="studentSelect" onchange="App.onStudentSelectChange()">'+studentOptionsHtml()+'</select></div>'+
-      '<div id="studentPinArea"></div>'+
+      (saved
+        ? '<div class="field"><label>내 이름</label>'+
+          '<div class="row gap-8" style="justify-content:space-between; flex-wrap:nowrap;">'+
+            '<span style="font-weight:600; font-size:1.05rem;">'+esc(saved)+'</span>'+
+            '<button class="btn btn-ghost btn-sm" onclick="App.switchStudentName()">다른 사람</button>'+
+          '</div><input type="hidden" id="studentNameInput" value="'+esc(saved)+'"></div>'
+        : '<div class="field"><label for="studentNameInput">내 이름</label>'+
+          '<input type="text" id="studentNameInput" placeholder="등록한 이름을 입력하세요" autocomplete="off"></div>')+
+      '<div class="field"><label for="studentPinInput">PIN</label>'+
+      '<input type="password" inputmode="numeric" id="studentPinInput" placeholder="••••"></div>'+
       '<div class="form-error" id="studentEnterError"></div>'+
       '<button class="btn btn-primary" onclick="App.enterStudent()">학생으로 입장</button>'+
       '<button class="btn" style="margin-top:8px;" onclick="App.toggleSignup()">학생으로 등록하기</button>';
@@ -1136,7 +1138,6 @@
       state.signupOpen = !state.signupOpen;
       var card = el('studentCard');
       if(card) card.innerHTML = studentCardHtml();
-      if(!state.signupOpen) updateLandingStudentSelect();
     },
     signupStudent: function(){
       var name = (el('signupName').value||'').trim();
@@ -1157,6 +1158,7 @@
         memo:'', pin:pin, createdAt:new Date().toISOString()
       }).then(function(ref){
         state.signupOpen = false;
+        rememberName(name);
         state.studentId = ref.id; state.studentName = name;
         state.role = 'student'; state.tab='schedule';
         saveSession(); renderRoot();
@@ -1190,35 +1192,28 @@
       if(lookupEl) lookupEl.blur();
       renderLessonsList();
     },
-    onStudentSelectChange: function(){
-      var sel = el('studentSelect');
-      var area = el('studentPinArea');
-      if(area) area.innerHTML = studentPinAreaHtml(sel ? sel.value : '');
-      var err = el('studentEnterError'); if(err) err.textContent = '';
+    switchStudentName: function(){
+      forgetName();
+      var card = el('studentCard');
+      if(card) card.innerHTML = studentCardHtml();
+      var input = el('studentNameInput');
+      if(input) input.focus();
     },
     enterStudent: function(){
-      var sel = el('studentSelect');
-      var id = sel.value;
       var err = el('studentEnterError');
-      if(!id){ if(err) err.textContent = '이름을 선택해주세요.'; return; }
-      var s = state.students.find(function(x){ return x.id===id; });
-      if(!s) return;
-      if(!s.pin){
-        var pin = el('newStudentPinInput').value.trim();
-        var confirmPin = el('newStudentPinConfirm').value.trim();
-        if(pin.length<4){ if(err) err.textContent = 'PIN은 4자리 이상 숫자로 만들어주세요.'; return; }
-        if(pin!==confirmPin){ if(err) err.textContent = 'PIN이 서로 일치하지 않아요.'; return; }
-        if(err) err.textContent = '';
-        state.db.collection('students').doc(id).update({pin:pin}).then(function(){
-          state.studentId = s.id; state.studentName = s.name;
-          state.role = 'student'; state.tab='schedule';
-          saveSession(); renderRoot();
-        }).catch(function(){ if(err) err.textContent = '설정에 실패했어요. 다시 시도해주세요.'; });
+      var nameEl = el('studentNameInput');
+      var name = nameEl ? nameEl.value.trim() : '';
+      if(!name){ if(err) err.textContent = '이름을 입력해주세요.'; return; }
+      var entered = el('studentPinInput').value.trim();
+      if(!entered){ if(err) err.textContent = 'PIN을 입력해주세요.'; return; }
+      var s = findStudentByName(name);
+      // 이름과 PIN을 함께 확인 — 어느 쪽이 틀렸는지는 알려주지 않음
+      if(!s || !s.pin || entered !== s.pin){
+        if(err) err.textContent = '이름 또는 PIN이 올바르지 않아요.';
         return;
       }
-      var entered = el('studentPinInput').value.trim();
-      if(entered !== s.pin){ if(err) err.textContent = 'PIN이 올바르지 않아요.'; return; }
       if(err) err.textContent = '';
+      rememberName(s.name);
       state.studentId = s.id; state.studentName = s.name;
       state.role = 'student'; state.tab='schedule';
       saveSession(); renderRoot();
