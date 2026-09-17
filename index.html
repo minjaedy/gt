@@ -191,6 +191,7 @@
     display:inline-block; padding:3px 11px; border-radius:999px; font-size:.78rem; font-weight:600;
     white-space:nowrap;
   }
+  .badge-dday{ background:var(--accent); color:var(--accent-text); margin-left:5px; }
   .badge-personal{background:var(--surface-2); color:var(--text-soft); border:1px dashed var(--border);}
   .badge-booked{background:var(--warning-bg); color:var(--warning);}
   .badge-completed{background:var(--success-bg); color:var(--success);}
@@ -300,7 +301,7 @@
     students:[], lessons:[], assignments:[], changeRequests:[],
     confirming:new Set(), confirmTimers:new Map(),
     settings:{pin:null}, settingsLoaded:false, pinChangeOpen:false,
-    weekStart:mondayOf(todayStr()), gridStart:'14:00', gridEnd:'21:00', activeCell:null,
+    weekStart:mondayOf(todayStr()), gridStart:'12:00', gridEnd:'22:00', activeCell:null,
     requestingId:null, requestRescheduling:null
   };
 
@@ -371,8 +372,8 @@
   }
   function loadGridPrefs(){
     try{
-      state.gridStart = localStorage.getItem('fretnote.gridStart') || '14:00';
-      state.gridEnd = localStorage.getItem('fretnote.gridEnd') || '21:00';
+      state.gridStart = localStorage.getItem('fretnote.gridStart') || '12:00';
+      state.gridEnd = localStorage.getItem('fretnote.gridEnd') || '22:00';
     }catch(e){}
   }
   function saveGridPrefs(){
@@ -760,7 +761,7 @@
       listEl.innerHTML = buildLookupHtml() + buildChangeRequestsHtml() + buildScheduleGridHtml('teacher');
       return;
     }
-    listEl.innerHTML = buildScheduleGridHtml('student') + buildStudentRecapHtml();
+    listEl.innerHTML = buildStudentRecapHtml();
   }
 
   function requestComposerHtml(lessonId){
@@ -825,11 +826,24 @@
     return html;
   }
 
+  function daysUntil(dateStr){
+    var target = parseDate(dateStr);
+    var today = parseDate(todayStr());
+    return Math.round((target - today) / 86400000);
+  }
+  function ddayLabel(dateStr){
+    var d = daysUntil(dateStr);
+    if(d === 0) return '오늘';
+    if(d === 1) return '내일';
+    if(d < 0) return '';
+    return 'D-' + d;
+  }
+
   function buildStudentRecapHtml(){
-    function row(l, badge, actions){
+    function row(l, badge, actions, dday){
       return '<div class="card lesson-row">'+
         '<div class="lesson-when"><div class="lesson-date">'+formatDateLabel(l.date)+'</div><div class="lesson-time mono">'+formatTime(l.startTime)+' · '+l.durationMin+'분</div></div>'+
-        '<div class="lesson-mid">'+badge+(l.note?'<div class="text-soft small">'+esc(l.note)+'</div>':'')+'</div>'+
+        '<div class="lesson-mid">'+badge+(dday||'')+(l.note?'<div class="text-soft small">'+esc(l.note)+'</div>':'')+'</div>'+
         '<div class="lesson-actions">'+(actions||'')+'</div>'+
       '</div>';
     }
@@ -838,10 +852,26 @@
     var past = state.lessons.filter(function(l){ return l.status==='completed' && l.studentId===state.studentId; })
       .sort(function(a,b){ return (b.date+b.startTime).localeCompare(a.date+a.startTime); }).slice(0,5);
 
-    var html = '<div class="block"><h2 class="section-title">다가오는 내 레슨 <span class="count mono">'+(mine.length||'')+'</span></h2>';
+    var html = '';
+
+    // 다음 레슨 D-day 강조
+    var next = mine[0];
+    if(next){
+      var d = daysUntil(next.date);
+      var big = d === 0 ? '오늘' : d === 1 ? '내일' : 'D-'+d;
+      html += '<div class="block"><div class="card" style="text-align:center; padding:22px 18px;">'+
+        '<div class="text-soft small">다음 레슨까지</div>'+
+        '<div style="font-size:2.4rem; font-weight:700; line-height:1.15; margin:2px 0 4px;">'+big+'</div>'+
+        '<div class="text-soft">'+formatDateLabel(next.date)+' '+formatTime(next.startTime)+'</div>'+
+      '</div></div>';
+    }
+
+    html += '<div class="block"><h2 class="section-title">다가오는 내 레슨 <span class="count mono">'+(mine.length||'')+'</span></h2>';
     html += mine.length ? mine.map(function(l){
-      return row(l, '<span class="badge badge-booked">예약됨</span>', myLessonActionHtml(l.id));
-    }).join('') : '<div class="empty">예정된 레슨이 없어요. 위 시간표에서 예약 가능한 시간을 확인해보세요.</div>';
+      var dd = ddayLabel(l.date);
+      var ddHtml = dd ? ' <span class="badge badge-dday">'+dd+'</span>' : '';
+      return row(l, '<span class="badge badge-booked">예약됨</span>', myLessonActionHtml(l.id), ddHtml);
+    }).join('') : '<div class="empty">예정된 레슨이 없어요. 선생님이 레슨을 잡으면 여기에 표시됩니다.</div>';
     html += '</div>';
 
     if(past.length){
